@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -127,6 +128,11 @@ func (m Model) handleFileInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter:
 		if m.state == StateInputFile {
 			if m.inputFile != "" {
+				// Check if input file exists
+				if _, err := os.Stat(m.inputFile); os.IsNotExist(err) {
+					m.error = "Input file does not exist"
+					return m, nil
+				}
 				m.state = StateOutputFile
 				m.inputBuffer = ""
 			} else {
@@ -145,7 +151,16 @@ func (m Model) handleFileInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inputBuffer = m.inputBuffer[:len(m.inputBuffer)-1]
 		}
 	case tea.KeyTab:
-		// TODO: Implement tab completion
+		// Implement tab completion
+		completed := CompleteFilePath(m.inputBuffer)
+		if completed != m.inputBuffer {
+			m.inputBuffer = completed
+			if m.state == StateInputFile {
+				m.inputFile = m.inputBuffer
+			} else {
+				m.outputFile = m.inputBuffer
+			}
+		}
 	default:
 		if len(msg.String()) == 1 {
 			m.inputBuffer += msg.String()
@@ -168,12 +183,25 @@ func (m Model) handleCombinationSizeInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.error = "Combination size must be between 2 and 4"
 		}
 	case tea.KeyUp:
+		if m.combinationSize > 2 {
+			m.combinationSize--
+		}
+	case tea.KeyDown:
 		if m.combinationSize < 4 {
 			m.combinationSize++
 		}
-	case tea.KeyDown:
-		if m.combinationSize > 2 {
-			m.combinationSize--
+	case tea.KeyRunes:
+		if len(msg.Runes) > 0 {
+			switch msg.Runes[0] {
+			case 'k', 'K':
+				if m.combinationSize > 2 {
+					m.combinationSize--
+				}
+			case 'j', 'J':
+				if m.combinationSize < 4 {
+					m.combinationSize++
+				}
+			}
 		}
 	}
 	return m, nil
@@ -201,6 +229,26 @@ func (m Model) handleExtraSymbolsInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.selectedSymbols[idx] = true
 		}
+	case tea.KeyRunes:
+		if len(msg.Runes) > 0 {
+			switch msg.Runes[0] {
+			case 'k', 'K':
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case 'j', 'J':
+				if m.cursor < len(symbols)-1 {
+					m.cursor++
+				}
+			case ' ':
+				idx := m.cursor
+				if m.selectedSymbols[idx] {
+					delete(m.selectedSymbols, idx)
+				} else {
+					m.selectedSymbols[idx] = true
+				}
+			}
+		}
 	}
 	return m, nil
 }
@@ -227,6 +275,26 @@ func (m Model) handleSymbolPositionsInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.selectedPositions[idx] = true
 		}
+	case tea.KeyRunes:
+		if len(msg.Runes) > 0 {
+			switch msg.Runes[0] {
+			case 'k', 'K':
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case 'j', 'J':
+				if m.cursor < len(positions)-1 {
+					m.cursor++
+				}
+			case ' ':
+				idx := m.cursor
+				if m.selectedPositions[idx] {
+					delete(m.selectedPositions, idx)
+				} else {
+					m.selectedPositions[idx] = true
+				}
+			}
+		}
 	}
 	return m, nil
 }
@@ -245,6 +313,17 @@ func (m Model) handleMaxFileSizeInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyDown:
 		if m.maxFileSizeMB > 10 {
 			m.maxFileSizeMB -= 10
+		}
+	case tea.KeyRunes:
+		if len(msg.Runes) > 0 {
+			switch msg.Runes[0] {
+			case 'k', 'K':
+				if m.maxFileSizeMB > 10 {
+					m.maxFileSizeMB -= 10
+				}
+			case 'j', 'J':
+				m.maxFileSizeMB += 10
+			}
 		}
 	}
 	return m, nil
@@ -299,9 +378,9 @@ func (m Model) View() string {
 func (m Model) renderFileInput(title, value, buffer string) string {
 	var content strings.Builder
 	content.WriteString(fmt.Sprintf("%s:\n", title))
-	content.WriteString(borderStyle.Render(fmt.Sprintf("📁 %s", value)))
+	content.WriteString(borderStyle.Render(fmt.Sprintf("%s", value)))
 	content.WriteString(fmt.Sprintf("\n\nCurrent input: %s", buffer))
-	content.WriteString("\n\nEnter file path and press Enter")
+	content.WriteString("\n\nEnter file path and press Enter (Tab for completion)")
 	return content.String()
 }
 
@@ -317,7 +396,7 @@ func (m Model) renderCombinationSize() string {
 		content.WriteString(fmt.Sprintf("%s %d passwords\n", prefix, i))
 	}
 
-	content.WriteString("\nUse ↑/↓ to change, Enter to continue")
+	content.WriteString("\nUse ↑/↓ or j/k to change, Enter to continue")
 	return content.String()
 }
 
@@ -371,7 +450,7 @@ func (m Model) renderMaxFileSize() string {
 	var content strings.Builder
 	content.WriteString("Max File Size (MB):\n\n")
 	content.WriteString(fmt.Sprintf("%s %d MB", cursorStyle.Render("▶"), m.maxFileSizeMB))
-	content.WriteString("\n\nUse ↑/↓ to change, Enter to continue")
+	content.WriteString("\n\nUse ↑/↓ or j/k to change, Enter to continue")
 	return content.String()
 }
 
