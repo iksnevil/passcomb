@@ -7,12 +7,11 @@ import (
 	"strings"
 
 	"github.com/iksnevil/passcomb/pkg/generator"
-	"github.com/iksnevil/passcomb/pkg/tui"
+	"github.com/iksnevil/passcomb/pkg/interactive"
 )
 
 type CLI struct {
 	config generator.Config
-	tui    bool
 }
 
 func NewCLI() *CLI {
@@ -30,13 +29,21 @@ func (c *CLI) ParseArgs(args []string) error {
 	var (
 		inputFile       = flags.String("input", "", "Input file with passwords (one per line)")
 		outputFile      = flags.String("output", "", "Output file for combinations")
-		combinationSize = flags.Int("size", 2, "Combination size (2-4)")
+		combinationSize = flags.Int("count", 2, "Combination size (2-4)")
 		extraSymbols    = flags.String("symbols", "", "Extra symbols to use (e.g., '!@#$')")
 		positions       = flags.String("positions", "", "Symbol positions: start,end,between")
 		maxFileSize     = flags.Int("maxsize", 100, "Max file size in MB")
 		showHelp        = flags.Bool("help", false, "Show help")
-		useTUI          = flags.Bool("tui", false, "Use terminal UI interface")
 	)
+
+	// Define short aliases
+	flags.StringVar(inputFile, "i", "", "Input file with passwords (one per line)")
+	flags.StringVar(outputFile, "o", "", "Output file for combinations")
+	flags.IntVar(combinationSize, "c", 2, "Combination size (2-4)")
+	flags.StringVar(extraSymbols, "s", "", "Extra symbols to use (e.g., '!@#$')")
+	flags.StringVar(positions, "p", "", "Symbol positions: start,end,between")
+	flags.IntVar(maxFileSize, "m", 100, "Max file size in MB")
+	flags.BoolVar(showHelp, "h", false, "Show help")
 
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -47,9 +54,11 @@ func (c *CLI) ParseArgs(args []string) error {
 		os.Exit(0)
 	}
 
-	c.tui = *useTUI
+	// Determine mode: if any CLI parameters are provided, use CLI mode, otherwise interactive
+	hasCLIParams := *inputFile != "" || *outputFile != "" || *combinationSize != 2 ||
+		*extraSymbols != "" || *positions != "" || *maxFileSize != 100
 
-	if !c.tui {
+	if hasCLIParams {
 		// CLI mode - validate required parameters
 		if *inputFile == "" {
 			return fmt.Errorf("input file is required in CLI mode")
@@ -95,14 +104,15 @@ func (c *CLI) ParseArgs(args []string) error {
 }
 
 func (c *CLI) Run() error {
-	if c.tui {
-		// Run TUI mode
-		program := tui.NewProgram()
-		return program.Start()
+	// Determine mode: if any CLI parameters are provided, use CLI mode, otherwise interactive
+	if c.config.InputFile != "" || c.config.OutputFile != "" {
+		// Run CLI mode
+		return c.runCLI()
 	}
 
-	// Run CLI mode
-	return c.runCLI()
+	// Run interactive mode
+	model := interactive.NewModel()
+	return model.Start()
 }
 
 func (c *CLI) runCLI() error {
@@ -178,33 +188,33 @@ DESCRIPTION:
     combinations of specified length with optional extra symbols.
 
 MODES:
-    TUI Mode:    passcomb -tui
-    CLI Mode:    passcomb -input <file> -output <file> [options]
-
-TUI OPTIONS:
-    -tui              Use terminal user interface (interactive mode)
+    Interactive Mode: passcomb (no parameters)
+    CLI Mode:        passcomb -input <file> -output <file> [options]
 
 CLI OPTIONS:
-    -input string     Input file with passwords (one per line) [required in CLI mode]
-    -output string    Output file for combinations [required in CLI mode]
-    -size int         Combination size (2-4) [default: 2]
-    -symbols string   Extra symbols to use (e.g., '!@#$') [default: none]
-    -positions string Symbol positions: start,end,between [default: none]
-    -maxsize int      Max file size in MB [default: 100]
-    -help             Show this help message
+    -i, --input string     Input file with passwords (one per line) [required in CLI mode]
+    -o, --output string    Output file for combinations [required in CLI mode]
+    -c, --count int        Combination size (2-4) [default: 2]
+    -s, --symbols string   Extra symbols to use (e.g., '!@#$') [default: none]
+    -p, --positions string Symbol positions: start,end,between [default: none]
+    -m, --maxsize int      Max file size in MB [default: 100]
+    -h, --help             Show this help message
 
 EXAMPLES:
-    # Interactive mode
-    passcomb -tui
+    # Interactive mode (default)
+    passcomb
 
     # CLI mode - basic combinations
-    passcomb -input passwords.txt -output combinations.txt -size 2
+    passcomb -i passwords.txt -o combinations.txt -c 2
 
-    # CLI mode - with extra symbols
-    passcomb -input passwords.txt -output combos.txt -size 3 -symbols '!@#' -positions start,end
+    # CLI mode - with extra symbols (short aliases)
+    passcomb -i passwords.txt -o combos.txt -c 3 -s '!@#' -p start,end
+
+    # CLI mode - with extra symbols (long names)
+    passcomb --input passwords.txt --output combos.txt --count 4 --symbols '!@#' --positions start,end
 
     # CLI mode - large output with file splitting
-    passcomb -input passwords.txt -output combos.txt -size 4 -maxsize 50
+    passcomb -i passwords.txt -o combos.txt -c 4 -m 50
 
 SYMBOL POSITIONS:
     start     Add symbols at the beginning of combinations
